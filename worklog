@@ -1,0 +1,122 @@
+#!/usr/bin/ruby
+
+require 'net/smtp'
+
+#debug option
+debug = ARGV.include? "debug"
+
+VERSION = 1.0
+DEFAULT_ADDR, DEFAULT_FROM, DEFAULT_SIG = File.read("#{File.dirname(__FILE__)}/env_vars").split("\n")
+ACTIVE_TASKS_FILENAME = "#{File.dirname(__FILE__)}/active_tasks"
+
+#header
+puts "Worklog #{VERSION}\n"
+
+#get recipient
+print "Please enter recipient or leave blank for manager: "
+addr = STDIN.gets.chomp
+addr = (addr == "") ? DEFAULT_ADDR : addr
+
+#get from
+print "Please enter from email address or leave blank for Kilo9: "
+from = STDIN.gets.chomp
+from = (from == "") ? DEFAULT_FROM : from
+
+#get signature
+print "Please enter signature for end of email or leave blank for Jeremy: "
+sig = STDIN.gets.chomp
+sig = (sig == "") ? DEFAULT_SIG : sig
+
+#send copy?
+print "Would you like to receive a copy? (N/n for no, otherwise will be yes): "
+copy = STDIN.gets.chomp
+copy = (copy == "N" || copy == "n") ? false : true
+
+#get date/time
+time = Time.now
+
+#initialize tasks array
+tasks = []
+
+if File.exist?(ACTIVE_TASKS_FILENAME)
+  active_tasks = File.open(ACTIVE_TASKS_FILENAME, "r")
+
+  #read active tasks
+  active_tasks.each_line do |task|
+    tasks << task.chomp
+  end
+end
+
+#completed tasks array
+done_tasks = []
+
+if !tasks.empty?
+  #show active tasks
+  puts "Your active tasks are:"
+  tasks.each_with_index { |task, i| puts "#{i}) #{task}" }
+
+  #ask for completed tasks and store id's in array
+  print "Please list tasks completed today by whitespace separated list of numbers: "
+  done = STDIN.gets.chomp.split(" ")
+  done.map!(&:to_i)
+
+  #delete completed tasks
+  done.each { |i| done_tasks << tasks[i] }
+  done.each do |i|
+    tasks.delete_at(i)
+    done.map!{|j| j -= 1}
+  end
+else
+  puts "No active tasks"
+end
+
+#ask for new tasks and add
+loop do
+  print "Please give the name of any new tasks assigned: "
+  new_task = STDIN.gets.chomp
+  break if new_task == ""
+  tasks << new_task
+end
+
+#overwrite file
+active_tasks = File.new(ACTIVE_TASKS_FILENAME, "w")
+
+#add current list
+tasks.each { |task| active_tasks.write("#{task}\n") }
+
+#reassign so gets stops reading at END not at newline
+$/ = "END"
+puts "Please provide a log of the day's work, newlines allowed, type END then <cr> to finish:"
+log = STDIN.gets.rpartition("END")[0]
+
+#assemble email
+email = <<EOM
+From: <#{from}>
+To: <#{addr}>
+Subject: Worklog
+
+Log of Work:
+
+Time: #{time}
+
+#{(!tasks.empty?) ? "Active Tasks:\n#{tasks.map!{|t| "\u2022 #{t}"}.join("\n")}" : ""}
+
+#{(!done_tasks.empty?) ? "Completed Tasks:\n#{done_tasks.map!{|t| "\u2022 #{t}"}.join("\n")}" : ""}
+
+Log:
+#{log}
+
+Sincerely,
+#{sig}
+EOM
+
+if debug
+  puts email
+  exit
+end
+
+#send mail
+Net::SMTP.start("localhost") do |smtp|
+  smtp.send_message(email, from, addr)
+  smtp.send_message(email, from, from) if copy
+end
