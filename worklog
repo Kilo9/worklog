@@ -8,6 +8,8 @@ debug = ARGV.include? "debug"
 VERSION = 1.0
 DEFAULT_ADDR, DEFAULT_FROM, DEFAULT_SIG = File.read("#{File.dirname(__FILE__)}/env_vars").split("\n")
 ACTIVE_TASKS_FILENAME = "#{File.dirname(__FILE__)}/active_tasks"
+FILES_DIR = "#{File.dirname(__FILE__)}/worklog/active_tasks"
+LOG_FILENAME = "#{File.dirname(__FILE__)}/log"
 
 #header
 puts "Worklog #{VERSION}\n"
@@ -109,6 +111,10 @@ Log:
 Sincerely,
 #{sig}
 EOM
+
+File.open(LOG_FILENAME, 'a') do |f|
+  f.puts "#{email}\n"
+end
 
 if debug
   puts email
